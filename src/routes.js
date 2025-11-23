@@ -7,6 +7,7 @@ import {
   MdHome,
   MdLock,
   MdOutlineShoppingCart,
+  MdLibraryBooks,
 } from 'react-icons/md';
 
 // Admin Imports
@@ -14,6 +15,7 @@ import MainDashboard from 'views/admin/default';
 import NFTMarketplace from 'views/admin/marketplace';
 import Profile from 'views/admin/profile';
 import DataTables from 'views/admin/dataTables';
+import QuizManagement from 'views/admin/quizManagement';
 import RTL from 'views/admin/rtl';
 
 // Auth Imports
@@ -48,6 +50,13 @@ const routes = [
     icon: <Icon as={MdBarChart} width="20px" height="20px" color="inherit" />,
     path: '/data-tables',
     component: <DataTables />,
+  },
+  {
+    name: 'Quiz Management',
+    layout: '/admin',
+    icon: <Icon as={MdLibraryBooks} width="20px" height="20px" color="inherit" />,
+    path: '/quiz-management',
+    component: <QuizManagement />,
   },
   {
     name: 'Profile',

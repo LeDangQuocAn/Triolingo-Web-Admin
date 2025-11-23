@@ -1,5 +1,5 @@
 // Chakra imports
-import { Box, Flex, Text, Select, useColorModeValue } from "@chakra-ui/react";
+import { Box, Flex, Text, useColorModeValue } from "@chakra-ui/react";
 // Custom components
 import Card from "components/card/Card.js";
 import PieChart from "components/charts/PieChart";
@@ -26,18 +26,8 @@ export default function Conversion(props) {
         w='100%'
         mb='8px'>
         <Text color={textColor} fontSize='md' fontWeight='600' mt='4px'>
-          Your Pie Chart
+          Quiz completion rate
         </Text>
-        <Select
-          fontSize='sm'
-          variant='subtle'
-          defaultValue='monthly'
-          width='unset'
-          fontWeight='700'>
-          <option value='daily'>Daily</option>
-          <option value='monthly'>Monthly</option>
-          <option value='yearly'>Yearly</option>
-        </Select>
       </Flex>
 
       <PieChart
@@ -47,43 +37,67 @@ export default function Conversion(props) {
         chartOptions={pieChartOptions}
       />
       <Card
-        bg={cardColor}
-        flexDirection='row'
+        bg='#6E47FF'
+        borderRadius='16px'
+        flexDirection={{ base: 'column', md: 'row' }}
         boxShadow={cardShadow}
         w='100%'
         p='15px'
         px='20px'
         mt='15px'
-        mx='auto'>
-        <Flex direction='column' py='5px'>
+        mx='auto'
+        alignItems={{ base: 'stretch', md: 'center' }}
+        justifyContent='space-between'
+        flexWrap='wrap'>
+        <Flex direction='column' py='5px' alignItems='flex-start' w={{ base: '100%', md: 'auto' }} mb={{ base: '12px', md: '0' }}>
           <Flex align='center'>
-            <Box h='8px' w='8px' bg='brand.500' borderRadius='50%' me='4px' />
+            <Box h='10px' w='10px' bg='white' borderRadius='50%' me='8px' />
             <Text
-              fontSize='xs'
-              color='secondaryGray.600'
-              fontWeight='700'
+              fontSize={{ base: 'sm', md: 'sm' }}
+              color='rgba(255,255,255,0.8)'
+              fontWeight='600'
               mb='5px'>
-              Your files
+              Not started
             </Text>
           </Flex>
-          <Text fontSize='lg' color={textColor} fontWeight='700'>
-            63%
+          <Text fontSize={{ base: 'xl', md: '2xl' }} color='black' fontWeight='800'>
+            23%
           </Text>
         </Flex>
-        <VSeparator mx={{ base: "60px", xl: "60px", "2xl": "60px" }} />
-        <Flex direction='column' py='5px' me='10px'>
+
+        <VSeparator display={{ base: 'none', md: 'block' }} mx={{ base: '0', md: '24px' }} />
+
+        <Flex direction='column' py='5px' alignItems={{ base: 'flex-start', md: 'center' }} w={{ base: '100%', md: 'auto' }} mb={{ base: '12px', md: '0' }}>
           <Flex align='center'>
-            <Box h='8px' w='8px' bg='#6AD2FF' borderRadius='50%' me='4px' />
+            <Box h='10px' w='10px' bg='#4318FF' borderRadius='50%' me='8px' />
             <Text
-              fontSize='xs'
-              color='secondaryGray.600'
-              fontWeight='700'
+              fontSize={{ base: 'sm', md: 'sm' }}
+              color='rgba(255,255,255,0.9)'
+              fontWeight='600'
               mb='5px'>
-              System
+              In progress
             </Text>
           </Flex>
-          <Text fontSize='lg' color={textColor} fontWeight='700'>
-            25%
+          <Text fontSize={{ base: 'xl', md: '2xl' }} color='black' fontWeight='800'>
+            65%
+          </Text>
+        </Flex>
+
+        <VSeparator display={{ base: 'none', md: 'block' }} mx={{ base: '0', md: '24px' }} />
+
+        <Flex direction='column' py='5px' alignItems={{ base: 'flex-start', md: 'flex-end' }} w={{ base: '100%', md: 'auto' }}>
+          <Flex align='center'>
+            <Box h='10px' w='10px' bg='#6AD2FF' borderRadius='50%' me='8px' />
+            <Text
+              fontSize={{ base: 'sm', md: 'sm' }}
+              color='rgba(255,255,255,0.9)'
+              fontWeight='600'
+              mb='5px'>
+              Completed
+            </Text>
+          </Flex>
+          <Text fontSize={{ base: 'xl', md: '2xl' }} color='black' fontWeight='800'>
+            12%
           </Text>
         </Flex>
       </Card>

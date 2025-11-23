@@ -209,8 +209,9 @@ export const barChartOptionsConsumption = {
 };
 
 export const pieChartOptions = {
-  labels: ["Your files", "System", "Empty"],
-  colors: ["#4318FF", "#6AD2FF", "#EFF4FB"],
+  labels: ["Not started", "In progress", "Completed"],
+  // Order of colors follows the labels above: Not started, In progress, Completed
+  colors: ["#EFF4FB", "#4318FF", "#6AD2FF"],
   chart: {
     width: "50px",
   },
@@ -239,7 +240,7 @@ export const pieChartOptions = {
     },
   },
   fill: {
-    colors: ["#4318FF", "#6AD2FF", "#EFF4FB"],
+    colors: ["#EFF4FB", "#4318FF", "#6AD2FF"],
   },
   tooltip: {
     enabled: true,
@@ -247,7 +248,7 @@ export const pieChartOptions = {
   },
 };
 
-export const pieChartData = [63, 25, 12];
+export const pieChartData = [23, 65, 12];
 
 // Total Spent Default
 

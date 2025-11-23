@@ -152,7 +152,7 @@ export default function HeaderLinks(props) {
               borderRadius="8px"
               mb="10px"
             >
-              <ItemContent info="Horizon Design System Free" />
+              <ItemContent info="Triolingo" />
             </MenuItem>
           </Flex>
         </MenuList>
@@ -213,7 +213,7 @@ export default function HeaderLinks(props) {
                 color={textColor}
                 bg="transparent"
               >
-                Try Horizon Free
+                Triolingo
               </Button>
             </Link>
           </Flex>
