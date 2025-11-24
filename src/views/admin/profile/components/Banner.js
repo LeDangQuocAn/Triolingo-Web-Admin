@@ -4,7 +4,7 @@ import Card from "components/card/Card.js";
 import React from "react";
 
 export default function Banner(props) {
-  const { banner, avatar, name, job, posts, followers, following } = props;
+  const { banner, avatar, name, job, role, status } = props;
   // Chakra Color Mode
   const textColorPrimary = useColorModeValue("secondaryGray.900", "white");
   const textColorSecondary = "gray.400";
@@ -36,29 +36,27 @@ export default function Banner(props) {
       <Text color={textColorSecondary} fontSize='sm'>
         {job}
       </Text>
-      <Flex w='max-content' mx='auto' mt='26px'>
-        <Flex mx='auto' me='60px' align='center' direction='column'>
-          <Text color={textColorPrimary} fontSize='2xl' fontWeight='700'>
-            {posts}
+
+      <Flex w='max-content' mx='auto' mt='18px' align='center' gap='24px'>
+        <Flex align='center' direction='column'>
+          <Text color={textColorPrimary} fontSize='md' fontWeight='700'>
+            Role
           </Text>
-          <Text color={textColorSecondary} fontSize='sm' fontWeight='400'>
-            Posts
-          </Text>
-        </Flex>
-        <Flex mx='auto' me='60px' align='center' direction='column'>
-          <Text color={textColorPrimary} fontSize='2xl' fontWeight='700'>
-            {followers}
-          </Text>
-          <Text color={textColorSecondary} fontSize='sm' fontWeight='400'>
-            Followers
+          <Text color={textColorSecondary} fontSize='sm'>
+            {role}
           </Text>
         </Flex>
-        <Flex mx='auto' align='center' direction='column'>
-          <Text color={textColorPrimary} fontSize='2xl' fontWeight='700'>
-            {following}
+
+        <Flex align='center' direction='column'>
+          <Text color={textColorPrimary} fontSize='md' fontWeight='700'>
+            Status
           </Text>
-          <Text color={textColorSecondary} fontSize='sm' fontWeight='400'>
-            Following
+          <Text
+            color={status === 'Online' ? 'green.500' : status === 'Suspended' ? 'red.500' : textColorSecondary}
+            fontSize='sm'
+            fontWeight='600'
+          >
+            {status}
           </Text>
         </Flex>
       </Flex>

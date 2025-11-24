@@ -14,8 +14,10 @@ import {
 import MainDashboard from 'views/admin/default';
 import NFTMarketplace from 'views/admin/marketplace';
 import Profile from 'views/admin/profile';
+import UserManagement from 'views/admin/userManagement';
 import DataTables from 'views/admin/dataTables';
 import QuizManagement from 'views/admin/quizManagement';
+import DataManagerment from 'views/admin/dataManagerment';
 import RTL from 'views/admin/rtl';
 
 // Auth Imports
@@ -43,6 +45,7 @@ const routes = [
     ),
     component: <NFTMarketplace />,
     secondary: true,
+    sidebar: false,
   },
   {
     name: 'Data Tables',
@@ -50,6 +53,7 @@ const routes = [
     icon: <Icon as={MdBarChart} width="20px" height="20px" color="inherit" />,
     path: '/data-tables',
     component: <DataTables />,
+    sidebar: false,
   },
   {
     name: 'Quiz Management',
@@ -58,12 +62,30 @@ const routes = [
     path: '/quiz-management',
     component: <QuizManagement />,
   },
+
+  {
+    name: 'Data Managerment',
+    layout: '/admin',
+    path: '/data-managerment',
+    icon: <Icon as={MdBarChart} width="20px" height="20px" color="inherit" />,
+    component: <DataManagerment />,
+  },
+
   {
     name: 'Profile',
     layout: '/admin',
-    path: '/profile',
+    path: '/user-management/profile',
+    sidebar: false,
     icon: <Icon as={MdPerson} width="20px" height="20px" color="inherit" />,
     component: <Profile />,
+  },
+
+  {
+    name: 'User Management',
+    layout: '/admin',
+    path: '/user-management',
+    icon: <Icon as={MdPerson} width="20px" height="20px" color="inherit" />,
+    component: <UserManagement />,
   },
   {
     name: 'Sign In',
@@ -78,6 +100,7 @@ const routes = [
     path: '/rtl-default',
     icon: <Icon as={MdHome} width="20px" height="20px" color="inherit" />,
     component: <RTL />,
+    sidebar: false,
   },
 ];
 
