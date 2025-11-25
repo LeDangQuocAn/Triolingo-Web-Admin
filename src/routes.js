@@ -17,6 +17,7 @@ import Profile from 'views/admin/profile';
 import UserManagement from 'views/admin/userManagement';
 import DataTables from 'views/admin/dataTables';
 import QuizManagement from 'views/admin/quizManagement';
+import EditQuiz from 'views/admin/quizManagement/Edit';
 import DataManagerment from 'views/admin/dataManagerment';
 import RTL from 'views/admin/rtl';
 
@@ -61,6 +62,14 @@ const routes = [
     icon: <Icon as={MdLibraryBooks} width="20px" height="20px" color="inherit" />,
     path: '/quiz-management',
     component: <QuizManagement />,
+  },
+  {
+    name: 'Edit Quiz',
+    layout: '/admin',
+    path: '/quiz-management/edit',
+    icon: <Icon as={MdLibraryBooks} width="20px" height="20px" color="inherit" />,
+    component: <EditQuiz />,
+    sidebar: false,
   },
 
   {

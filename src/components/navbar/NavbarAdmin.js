@@ -17,6 +17,8 @@ export default function AdminNavbar(props) {
 
 	const { secondary, message, brandText } = props;
 
+	const brandChain = Array.isArray(brandText) ? brandText.filter(Boolean) : brandText ? [brandText] : [];
+
 	// Here are all the props that may change depending on navbar's type or state.(secondary, variant, scrolled)
 	let mainText = useColorModeValue('navy.700', 'white');
 	let secondaryText = useColorModeValue('gray.700', 'white');
@@ -94,12 +96,13 @@ export default function AdminNavbar(props) {
 								Pages
 							</BreadcrumbLink>
 						</BreadcrumbItem>
-
-						<BreadcrumbItem color={secondaryText} fontSize='sm' mb='5px'>
-							<BreadcrumbLink href='#' color={secondaryText}>
-								{brandText}
-							</BreadcrumbLink>
-						</BreadcrumbItem>
+						{brandChain.map((b, i) => (
+							<BreadcrumbItem key={i} color={secondaryText} fontSize='sm' mb='5px'>
+								<BreadcrumbLink href='#' color={secondaryText}>
+									{b}
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+						))}
 					</Breadcrumb>
 					{/* Here we create navbar brand, based on route name */}
 					<Link
@@ -118,7 +121,7 @@ export default function AdminNavbar(props) {
 						_focus={{
 							boxShadow: 'none'
 						}}>
-						{brandText}
+						{brandChain.length ? brandChain[brandChain.length - 1] : brandText}
 					</Link>
 				</Box>
 				<Box ms='auto' w={{ sm: '100%', md: 'unset' }}>
@@ -137,7 +140,7 @@ export default function AdminNavbar(props) {
 }
 
 AdminNavbar.propTypes = {
-	brandText: PropTypes.string,
+	brandText: PropTypes.oneOfType([PropTypes.string, PropTypes.arrayOf(PropTypes.string)]),
 	variant: PropTypes.string,
 	secondary: PropTypes.bool,
 	fixed: PropTypes.bool,

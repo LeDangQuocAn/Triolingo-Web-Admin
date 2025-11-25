@@ -7,7 +7,7 @@ import Sidebar from 'components/sidebar/Sidebar.js';
 import { RtlProvider } from 'components/rtlProvider/RtlProvider.js';
 import { SidebarContext } from 'contexts/SidebarContext';
 import React, { useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import routes from 'routes.js';
 
 // Custom Chakra theme
@@ -20,31 +20,33 @@ export default function Dashboard(props) {
   const getRoute = () => {
     return window.location.pathname !== '/rtl/full-screen-maps';
   };
+  const location = useLocation();
+
+  const getRoutePath = () => location.pathname;
+
   const getActiveRoute = (routes) => {
-    let activeRoute = 'Default Brand Text';
-    for (let i = 0; i < routes.length; i++) {
-      if (routes[i].collapse) {
-        let collapseActiveRoute = getActiveRoute(routes[i].items);
-        if (collapseActiveRoute !== activeRoute) {
-          return collapseActiveRoute;
+    const current = getRoutePath();
+
+    const flat = [];
+    const walk = (items) => {
+      items.forEach((r) => {
+        if (r.collapse || r.category) {
+          if (r.layout && r.path) flat.push({ fullPath: r.layout + r.path, name: r.name });
+          if (r.items) walk(r.items);
+        } else {
+          if (r.layout && r.path) flat.push({ fullPath: r.layout + r.path, name: r.name });
         }
-      } else if (routes[i].category) {
-        let categoryActiveRoute = getActiveRoute(routes[i].items);
-        if (categoryActiveRoute !== activeRoute) {
-          return categoryActiveRoute;
-        }
-      } else {
-        if (
-          window.location.href.indexOf(routes[i].layout + routes[i].path) !== -1
-        ) {
-          return routes[i].name;
-        }
-      }
-    }
-    return activeRoute;
+      });
+    };
+    walk(routes);
+
+    const matches = flat.filter((f) => current === f.fullPath || current.startsWith(f.fullPath + '/'));
+    matches.sort((a, b) => a.fullPath.length - b.fullPath.length);
+    return matches.map((m) => m.name);
   };
   const getActiveNavbar = (routes) => {
     let activeNavbar = false;
+    const current = getRoutePath();
     for (let i = 0; i < routes.length; i++) {
       if (routes[i].collapse) {
         let collapseActiveNavbar = getActiveNavbar(routes[i].items);
@@ -57,9 +59,8 @@ export default function Dashboard(props) {
           return categoryActiveNavbar;
         }
       } else {
-        if (
-          window.location.href.indexOf(routes[i].layout + routes[i].path) !== -1
-        ) {
+        const fullPath = routes[i].layout + routes[i].path;
+        if (current === fullPath || current.startsWith(fullPath + '/')) {
           return routes[i].secondary;
         }
       }
@@ -68,6 +69,7 @@ export default function Dashboard(props) {
   };
   const getActiveNavbarText = (routes) => {
     let activeNavbar = false;
+    const current = getRoutePath();
     for (let i = 0; i < routes.length; i++) {
       if (routes[i].collapse) {
         let collapseActiveNavbar = getActiveNavbarText(routes[i].items);
@@ -80,9 +82,8 @@ export default function Dashboard(props) {
           return categoryActiveNavbar;
         }
       } else {
-        if (
-          window.location.href.indexOf(routes[i].layout + routes[i].path) !== -1
-        ) {
+        const fullPath = routes[i].layout + routes[i].path;
+        if (current === fullPath || current.startsWith(fullPath + '/')) {
           return routes[i].messageNavbar;
         }
       }
