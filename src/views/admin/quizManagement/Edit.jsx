@@ -703,7 +703,7 @@ export default function EditQuiz() {
                         const colors = ["blue.300", "teal.200", "yellow.200", "pink.200"];
                         const color = colors[i % colors.length];
                         return (
-                          <Box key={r.id || `response-${i}`} bg={color} color="white" borderRadius="12px" p={6} position="relative" boxShadow="sm" minH={{ base: "160px", md: "200px" }}>
+                          <Box key={r.id || `response-${i}`} bg={color} color="black" borderRadius="12px" p={6} position="relative" boxShadow="sm" minH={{ base: "160px", md: "200px" }}>
                             <Flex justify="space-between" position="absolute" top="10px" left="10px" right="10px">
                               <Flex gap="8px">
                                 <IconButton aria-label="Delete response" icon={<MdDelete size={20} />} size="md" variant="ghost" color="white" onClick={() => handleDeleteResponse(i)} />
@@ -726,7 +726,7 @@ export default function EditQuiz() {
                                 minH="100px"
                                 bg="transparent"
                                 border="none"
-                                color="white"
+                                color="black"
                                 textAlign="center"
                                 fontSize={{ base: '16px', md: '18px' }}
                               />
