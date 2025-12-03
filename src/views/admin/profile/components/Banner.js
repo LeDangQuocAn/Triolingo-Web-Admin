@@ -23,7 +23,7 @@ import React, { useState } from "react";
 import { MdEdit } from 'react-icons/md';
 
 export default function Banner(props) {
-  const { banner, avatar, name, job, role, status, onRoleChange } = props;
+  const { banner, avatar, name, role, status, onRoleChange } = props;
   // Chakra Color Mode
   const textColorPrimary = useColorModeValue("secondaryGray.900", "white");
   const textColorSecondary = "gray.400";
@@ -52,9 +52,7 @@ export default function Banner(props) {
       <Text color={textColorPrimary} fontWeight='bold' fontSize='xl' mt='10px'>
         {name}
       </Text>
-      <Text color={textColorSecondary} fontSize='sm'>
-        {job}
-      </Text>
+         {/* job removed per design request */}
 
       <Flex w='max-content' mx='auto' mt='18px' align='center' gap='24px'>
         <Flex align='center' direction='column'>

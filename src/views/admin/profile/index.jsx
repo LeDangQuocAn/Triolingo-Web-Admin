@@ -45,8 +45,19 @@ export default function Overview() {
 
   const bannerImg = user && user.banner ? user.banner : banner;
   const avatarImg = user && user.avatar ? user.avatar : avatar;
-  const name = user && user.name ? user.name : 'Adela Parkson';
-  const job = user && user.job ? user.job : 'Product Designer';
+
+  const capitalizeName = (raw) => {
+    if (!raw) return null;
+    return raw
+      .toString()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  };
+
+  const rawNameSource = user && (user.name || user.username) ? (user.name || user.username) : null;
+  const name = rawNameSource ? capitalizeName(rawNameSource) : 'Adela Parkson';
   // Only allow 'Admin' or 'Learner' roles — default to 'Learner' for anything else
   const rawRole = user && user.role ? user.role : null;
   const initialRole = rawRole && String(rawRole).toLowerCase() === 'admin' ? 'Admin' : 'Learner';
@@ -64,7 +75,6 @@ export default function Overview() {
             banner={bannerImg}
             avatar={avatarImg}
             name={name}
-            job={job}
             role={role}
             onRoleChange={(r) => setRole(r)}
             status={status}

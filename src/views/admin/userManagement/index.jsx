@@ -5,28 +5,21 @@ import {
 	Box,
 	Flex,
 	Input,
-	Button,
+	Table,
+	Thead,
+	Tbody,
+	Tr,
+	Th,
+	Td,
+	TableContainer,
 	SimpleGrid,
 	Stack,
 	Text,
 	Badge,
 	useColorModeValue,
 	Icon,
-	useDisclosure,
-	Modal,
-	ModalOverlay,
-	ModalContent,
-	ModalHeader,
-	ModalBody,
-	ModalFooter,
-	ModalCloseButton,
-	FormControl,
-	FormLabel,
-	Center,
-	VStack,
-	HStack,
 } from '@chakra-ui/react';
-import { MdAdd, MdSearch, MdUploadFile, MdArrowUpward, MdArrowDownward, MdArrowForward } from 'react-icons/md';
+import { MdSearch, MdArrowUpward, MdArrowDownward, MdArrowForward } from 'react-icons/md';
 
 import Card from 'components/card/Card.js';
 import MiniStatistics from 'components/card/MiniStatistics';
@@ -40,55 +33,15 @@ import avatar5 from 'assets/img/avatars/avatar5.png';
 
 export default function UserManagement() {
 	const boxBg = useColorModeValue('secondaryGray.300', 'whiteAlpha.100');
+	const searchBg = useColorModeValue('white', 'gray.700');
+	const searchShadow = useColorModeValue('0px 6px 14px rgba(2,6,23,0.06)', '0px 6px 14px rgba(255,255,255,0.04)');
+	const searchHover = useColorModeValue('0px 10px 20px rgba(2,6,23,0.08)', '0px 10px 20px rgba(255,255,255,0.06)');
 	const brandColor = useColorModeValue('brand.500', 'white');
 	const statBoxBg = useColorModeValue('white', 'gray.800');
 	const statBoxShadow = useColorModeValue('0px 10px 20px rgba(2,6,23,0.08)', 'none');
 
 	const navigate = useNavigate();
-	const { isOpen, onOpen, onClose } = useDisclosure();
-
-	// form state for create user modal
-	const [username, setUsername] = useState('');
-	const [email, setEmail] = useState('');
-	const [password, setPassword] = useState('');
-	const [confirmPassword, setConfirmPassword] = useState('');
-	const [avatarFile, setAvatarFile] = useState(null);
-	const [avatarPreview, setAvatarPreview] = useState(null);
-
-	const handleFileChange = (e) => {
-		const file = e.target.files && e.target.files[0];
-		if (file) {
-			setAvatarFile(file);
-			const reader = new FileReader();
-			reader.onload = (ev) => setAvatarPreview(ev.target.result);
-			reader.readAsDataURL(file);
-		}
-	};
-
-	const handleCreate = () => {
-		// create a temporary user object and add to list
-		const newUser = {
-			username: username || `user${Date.now()}`,
-			avatar: avatarPreview || null,
-			status: 'Online',
-			// default new users are Learners
-			role: 'Learner',
-			name: '',
-			job: '',
-			email,
-		};
-
-		setUsers((prev) => [newUser, ...prev]);
-
-		// reset and close
-		setUsername('');
-		setEmail('');
-		setPassword('');
-		setConfirmPassword('');
-		setAvatarFile(null);
-		setAvatarPreview(null);
-		onClose();
-	};
+	// Create user feature removed
 
 	// Local fallback users. The real API will only provide `username` and `status`.
 	const initialUsers = [
@@ -119,22 +72,34 @@ export default function UserManagement() {
 		let mounted = true;
 		async function loadUsers() {
 			try {
-				const res = await fetch('/api/admin/users');
+				const token = localStorage.getItem('token');
+				const headers = Object.assign({}, token ? { Authorization: `Bearer ${token}` } : {});
+				const res = await fetch('/api/admin/users', { method: 'GET', headers });
 				if (!mounted) return;
 				if (res.ok) {
 					const data = await res.json();
-					// Expecting an array of user objects: { username, status, avatar?, role? }
-					// Normalize roles to only 'Admin' or 'Learner'
-					if (Array.isArray(data) && data.length) {
-						const mapped = data.map((u) => ({
-							username: u.username,
-							avatar: u.avatar || null,
-							status: u.status || 'Offline',
-							name: u.name || undefined,
-							job: u.job || undefined,
+					// Backend may return { data: [...], pagination: {...} } or an array directly
+					const items = Array.isArray(data) ? data : Array.isArray(data && data.data) ? data.data : [];
+					if (items.length) {
+						// Remove soft-deleted users (isDeleted === true) from the list
+						const visible = items.filter((u) => !u.isDeleted);
+						const mapped = visible.map((u) => ({
+							username: u.username || u.userName || u.email || (u._id ? String(u._id) : undefined),
+							_id: u._id || u.id || (u._id ? String(u._id) : undefined),
+							id: u._id || u.id || (u._id ? String(u._id) : undefined),
+							avatar: u.avatar || u.avatarUrl || u.photo || null,
+							status: u.status || (u.isOnline ? 'Online' : 'Offline') || 'Offline',
+							name: u.name || u.fullName || u.displayName || undefined,
+							job: u.job || u.title || undefined,
 							role: u.role && String(u.role).toLowerCase() === 'admin' ? 'Admin' : 'Learner',
+							email: u.email || u.emailAddress || undefined,
+							currentTopic: u.currentTopic || undefined,
+							createdAt: u.createdAt || u.created_at || u.dateCreated || undefined,
 						}));
 						setUsers(mapped);
+						// compute Total Learner from mapped list (role === 'Learner')
+						const learners = mapped.filter((m) => m.role === 'Learner').length;
+						setStats((prev) => prev.map((s) => (s.name === 'Total Learner' ? { ...s, value: String(learners) } : s)));
 					}
 				}
 			} catch (err) {
@@ -152,10 +117,13 @@ export default function UserManagement() {
 	// For now we use default values; when the backend is ready
 	// this component will fetch `/api/admin/user-stats` and replace them.
 	const [stats, setStats] = useState([
-		{ name: 'Total Users', value: '20K', growth: '+7.9%', status: 'good' },
+		{ name: 'Total Learner', value: '20K', growth: '+7.9%', status: 'good' },
 		{ name: 'New Users', value: '936', growth: '+3.4%', status: 'normal' },
 		{ name: 'Deleted Users', value: '581', growth: '+12.8%', status: 'concerned' },
 	]);
+
+	// Track deleted-24h count for display
+	const [deleted24Count, setDeleted24Count] = useState(0);
 
 	useEffect(() => {
 		let mounted = true;
@@ -174,6 +142,35 @@ export default function UserManagement() {
 		}
 
 		loadStats();
+
+		// Also fetch last 24h user activity (new registrations / deleted accounts)
+		async function loadActivity24h() {
+			try {
+				const token = localStorage.getItem('token');
+				const headers = Object.assign({}, token ? { Authorization: `Bearer ${token}` } : {});
+				const resp = await fetch('/api/admin/users/activity-24h', { method: 'GET', headers });
+				if (!mounted) return;
+				if (resp.ok) {
+					const body = await resp.json();
+					if (body && body.last24h) {
+						const deleted = Number(body.last24h.deletedAccounts || 0);
+						setDeleted24Count(deleted);
+						setStats((prev) => prev.map((s) => {
+							if (s.name === 'New Users') return { ...s, value: String(body.last24h.newRegistrations || 0) };
+							if (s.name === 'Deleted Users') return { ...s, value: String(deleted) };
+							return s;
+						}));
+					}
+				}
+			} catch (e) {
+				// ignore
+			}
+		}
+
+		loadActivity24h();
+
+		// No longer fetching totalUsers from /stats/general.
+		// Total Learner will be computed from the users list returned by /api/admin/users.
 		return () => {
 			mounted = false;
 		};
@@ -185,131 +182,67 @@ export default function UserManagement() {
 				<Box gridColumn={{ base: '1', md: '1 / span 2' }}>
 					<Card px="20px" py="20px">
 						<Flex align="center" justify="space-between" mb="12px">
-							<Text fontSize="xl" fontWeight="700">
-								Users
-							</Text>
-							<Button leftIcon={<MdAdd />} colorScheme="brand" size="sm" onClick={onOpen}>
-								Add
-							</Button>
+							<Text fontSize="xl" fontWeight="700">Users</Text>
 						</Flex>
 
-						<Flex align="center" gap={3} mb={6}>
+						<Flex
+							align="center"
+							gap={3}
+							mb={6}
+							bg={searchBg}
+							px={3}
+							py={2}
+							borderRadius="12px"
+							boxShadow={searchShadow}
+							_hover={{ boxShadow: searchHover }}
+							_focusWithin={{ boxShadow: '0px 12px 30px rgba(99,102,241,0.12)' }}
+						>
 							<Icon as={MdSearch} w="20px" h="20px" color="gray.400" />
 							<Input
 								placeholder="Search user"
 								variant="unstyled"
 								value={query}
 								onChange={(e) => setQuery(e.target.value)}
+								width="100%"
 							/>
 						</Flex>
 
-						<Stack spacing={5}>
-							{filteredUsers.length > 0 ? (
-								filteredUsers.map((u) => (
-									<Flex
-										key={u.username}
-										align="center"
-										justify="space-between"
-										cursor="pointer"
-										onClick={() =>
-											navigate('/admin/user-management/profile', {
-												state: {
-													user: {
-														banner: null,
-														avatar: u.avatar || null,
-														name: u.name || u.username,
-														job: u.job || '',
-														role: u.role || 'Learner',
-														status: u.status || 'Offline',
-													},
-												},
-											})
-										}
-									>
-										<Flex align="center" gap={4}>
-											<Avatar src={u.avatar} name={u.username} boxSize="56px" />
-											<Box>
-												<Text fontWeight={700}>{u.username}</Text>
-												<Text fontSize="sm" color="gray.500">{u.name || ''}</Text>
-											</Box>
-										</Flex>
-
-										<Box>
-											<Badge
-												colorScheme={u.status === 'Online' ? 'green' : 'gray'}
-												variant="subtle"
-											>
-												{u.status}
-											</Badge>
-										</Box>
-									</Flex>
-								))
-							) : (
-								<Text color="gray.500" px="6px">No users found</Text>
-							)}
-						</Stack>
+						<TableContainer>
+							<Table variant="simple" size="sm">
+								<Thead>
+									<Tr>
+										<Th> User </Th>
+										<Th> Role </Th>
+										<Th textAlign="center"> Status </Th>
+									</Tr>
+								</Thead>
+								<Tbody>
+									{filteredUsers.length > 0 ? (
+										filteredUsers.map((u) => (
+											<Tr key={u.username} cursor="pointer" onClick={() => navigate('/admin/user-management/profile', { state: { user: { ...u, banner: null } } })}>
+												<Td>
+													<Flex align="center" gap={3}>
+														<Avatar src={u.avatar} name={u.username} boxSize="48px" />
+														<Box>
+															<Text fontWeight={700}>{u.username}</Text>
+															<Text fontSize="sm" color="gray.500">{u.email || ''}</Text>
+														</Box>
+													</Flex>
+												</Td>
+												<Td>{u.role || 'Learner'}</Td>
+												<Td textAlign="center"><Badge colorScheme={u.status === 'Online' ? 'green' : 'gray'} variant="subtle">{u.status}</Badge></Td>
+											</Tr>
+										))
+									) : (
+											<Tr><Td colSpan={3}><Text color="gray.500" px="6px">No users found</Text></Td></Tr>
+									)}
+								</Tbody>
+							</Table>
+						</TableContainer>
 					</Card>
 				</Box>
 
-				{/* Create User Modal */}
-				<Modal isOpen={isOpen} onClose={onClose} isCentered>
-					<ModalOverlay />
-					<ModalContent borderRadius="16px" maxW="420px">
-						<ModalHeader pt="24px" pb="6px">Create User</ModalHeader>
-						<ModalCloseButton />
-						<ModalBody pb={6}>
-							<VStack spacing={4} align="stretch">
-								<FormControl>
-									<FormLabel color="gray.500">Username</FormLabel>
-									<Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="" />
-								</FormControl>
-
-								<FormControl>
-									<FormLabel color="gray.500">Email Address</FormLabel>
-									<Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="" />
-								</FormControl>
-
-								<FormControl>
-									<FormLabel color="gray.500">Password</FormLabel>
-									<Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="" />
-								</FormControl>
-
-								<FormControl>
-									<FormLabel color="gray.500">Password</FormLabel>
-									<Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="" />
-								</FormControl>
-
-								<FormControl>
-									<FormLabel color="gray.500">Avatar (Optional)</FormLabel>
-									<Center p={4} borderRadius="8px" bgGradient="linear(to-b, whiteAlpha.800, whiteAlpha.600)" border="1px dashed" borderColor="gray.200">
-										<VStack>
-											<Box>
-												<input id="avatar-file" type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
-												<label htmlFor="avatar-file">
-													<Center flexDir="column" cursor="pointer">
-														<Icon as={MdUploadFile} w="36px" h="36px" color="brand.500" />
-														<Text color="brand.500" fontWeight="700" mt={2}>Upload Files</Text>
-														<Text fontSize="xs" color="gray.400">PNG, JPG and GIF files are allowed</Text>
-													</Center>
-												</label>
-											</Box>
-											{avatarPreview && (
-												<HStack>
-													<Avatar src={avatarPreview} />
-													<Text fontSize="sm">{avatarFile && avatarFile.name}</Text>
-												</HStack>
-											)}
-										</VStack>
-									</Center>
-								</FormControl>
-							</VStack>
-						</ModalBody>
-
-						<ModalFooter pb="24px">
-							<Button colorScheme="brand" w="full" onClick={handleCreate}>Create</Button>
-						</ModalFooter>
-					</ModalContent>
-				</Modal>
+                        
 
 				<Box gridColumn={{ base: '1', md: '3 / span 2' }}>
 					<Card px="20px" py="20px">

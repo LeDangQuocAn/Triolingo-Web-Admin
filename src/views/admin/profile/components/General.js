@@ -13,36 +13,46 @@ export default function GeneralInformation(props) {
   const user = location.state && location.state.user ? location.state.user : null;
   const username = user && user.username ? user.username : null;
 
-  const [info, setInfo] = useState({
-    email: 'Ademad22@gmail.com',
-    dateCreated: '10/14/2025',
-    password: '************',
-    vocabulary: 'Careers',
-    flashcard: 'Careers, 32/50 words',
-    quiz: 'Quiz 3, Score 10',
-  });
+  const formatDate = (d) => {
+    if (!d) return '—';
+    try {
+      const dt = new Date(d);
+      return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (e) {
+      return d;
+    }
+  };
+
+  const [info, setInfo] = useState(() => ({
+    username: user && user.username ? user.username : '',
+    email: user && user.email ? user.email : '—',
+    dateCreated: user && (user.createdAt || user.dateCreated) ? formatDate(user.createdAt || user.dateCreated) : '—',
+    currentTopic: user && user.currentTopic ? user.currentTopic : '—',
+    // removed: vocabulary, flashcard, quiz (not displayed)
+  }));
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       if (!username) return; // nothing to fetch for anonymous profile
       try {
+        // If backend provides a user-general endpoint, we merge its results.
+        if (!username) return;
         const res = await fetch(`/api/admin/user-general?username=${encodeURIComponent(username)}`);
         if (!mounted) return;
         if (res.ok) {
           const data = await res.json();
-          // expected shape: { email, dateCreated, passwordMask, vocabulary, flashcard, quiz }
+          // merge returned fields into info (prefer backend values)
           setInfo((prev) => ({
+            username: data.username || prev.username,
             email: data.email || prev.email,
-            dateCreated: data.dateCreated || prev.dateCreated,
-            password: data.passwordMask || prev.password,
-            vocabulary: data.vocabulary || prev.vocabulary,
-            flashcard: data.flashcard || prev.flashcard,
-            quiz: data.quiz || prev.quiz,
+            dateCreated: (data.dateCreated || data.createdAt) ? formatDate(data.dateCreated || data.createdAt) : prev.dateCreated,
+            currentTopic: data.currentTopic || prev.currentTopic,
+            // removed: vocabulary, flashcard, quiz
           }));
         }
       } catch (e) {
-        // API not available yet — keep defaults
+        // API not available or network error — keep already-provided user data
       }
     }
     load();
@@ -69,12 +79,10 @@ export default function GeneralInformation(props) {
         Basic account details and progress overview for this user.
       </Text>
       <SimpleGrid columns='2' gap='20px'>
+        <Information boxShadow={cardShadow} title='Username' value={info.username} />
         <Information boxShadow={cardShadow} title='Email' value={info.email} />
         <Information boxShadow={cardShadow} title='Date Created' value={info.dateCreated} />
-        <Information boxShadow={cardShadow} title='Password' value={info.password} />
-        <Information boxShadow={cardShadow} title='Vocabulary Progress' value={info.vocabulary} />
-        <Information boxShadow={cardShadow} title='Flashcard Progress' value={info.flashcard} />
-        <Information boxShadow={cardShadow} title='Quiz Progress' value={info.quiz} />
+          <Information boxShadow={cardShadow} title='Current Topic' value={info.currentTopic} />
       </SimpleGrid>
     </Card>
   );

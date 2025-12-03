@@ -78,6 +78,7 @@ const routes = [
     path: '/data-managerment',
     icon: <Icon as={MdBarChart} width="20px" height="20px" color="inherit" />,
     component: <DataManagerment />,
+    sidebar: false,
   },
 
   {

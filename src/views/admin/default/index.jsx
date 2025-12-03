@@ -64,7 +64,7 @@ import tableDataTopQuiz from "views/admin/marketplace/variables/tableDataTopQuiz
 // In development leave empty so `fetch('/admin/...')` is proxied by CRA dev server.
 const BACKEND_BASE = process.env.REACT_APP_API_BASE || "";
 // Fallback absolute backend URL to use when the dev proxy is not active.
-const BACKEND_FALLBACK = process.env.REACT_APP_API_BASE || "http://192.168.1.5:5001";
+const BACKEND_FALLBACK = process.env.REACT_APP_API_BASE || "http://98.94.144.216:5001";
 
 async function fetchWithFallback(path, options = {}) {
   const primary = BACKEND_BASE ? `${BACKEND_BASE}${path}` : path;

@@ -233,6 +233,15 @@ function SignIn() {
                   if (data && data.refreshToken) {
                     localStorage.setItem('refreshToken', data.refreshToken);
                   }
+                  // Mark this admin user as Online locally (no backend update)
+                  try {
+                    if (username) {
+                      localStorage.setItem('currentUser', username);
+                      localStorage.setItem(`userStatus_${username}`, 'Online');
+                    }
+                  } catch (e) {
+                    // ignore localStorage errors
+                  }
                   toast({ title: data && data.message ? data.message : 'Signed in', status: 'success', duration: 3000 });
                   navigate('/admin/default');
                 } catch (err) {

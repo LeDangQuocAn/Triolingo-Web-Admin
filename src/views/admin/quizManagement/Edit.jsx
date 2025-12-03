@@ -42,9 +42,9 @@ import {
 import { MdSearch } from 'react-icons/md';
 import Card from "components/card/Card";
 import Menu from "components/menu/MainMenu";
-import { fetchTopics as apiFetchTopics } from "../../../api/quizzes";
+import { fetchTopics as apiFetchTopics, fetchQuiz as apiFetchQuiz } from "../../../api/quizzes";
 import { Radio, RadioGroup, Stack, Spinner, useToast } from "@chakra-ui/react";
-import { MdArrowBack, MdEdit, MdDelete, MdImage, MdCheckCircle } from "react-icons/md";
+import { MdArrowBack, MdEdit, MdDelete, MdImage, MdCheckCircle, MdAudiotrack, MdPlayArrow } from "react-icons/md";
 
 import mcqIcon from "assets/img/icons/Multiple choice.png";
 import fillIcon from "assets/img/icons/Fill in the blank.png";
@@ -52,11 +52,11 @@ import matchIcon from "assets/img/icons/Matching headings.png";
 import listenIcon from "assets/img/icons/Listen.png";
 
 import animalsImg from "assets/img/topic/animals.png";
-import colorsImg from "assets/img/topic/colors.png";
+import colorsImg from "assets/img/topic/basic colors.png";
 import fruitsImg from "assets/img/topic/fruits.png";
-import foodImg from "assets/img/topic/food.png";
-import emotionImg from "assets/img/topic/emotion.png";
-import educationImg from "assets/img/topic/education.png";
+import foodImg from "assets/img/topic/food & drink.png";
+import emotionImg from "assets/img/topic/feelings & characteristic.png";
+import educationImg from "assets/img/topic/school.png";
 
 export default function EditQuiz() {
   const { state } = useLocation();
@@ -94,19 +94,22 @@ export default function EditQuiz() {
       const data = await apiFetchTopics();
       // normalize to { id, name }
       const normalized = Array.isArray(data)
-        ? data.map((t, i) => (typeof t === "string" ? { id: String(i), name: t } : { id: t.id ?? String(i), name: t.name ?? t.title ?? String(t) }))
+        ? data.map((t, i) => {
+            if (typeof t === "string") return { id: String(i), name: t, thumbnail: getTopicImage(t) };
+            // Support API shape: { topic_id, topic_name, difficulty, status }
+            const id = t.topic_id ?? t.id ?? String(i);
+            const name = t.topic_name ?? t.name ?? t.title ?? String(t);
+            // Attach thumbnail using local asset fallback when API doesn't provide one
+            const thumbnail = t.thumbnail || getTopicImage(name);
+            return { id: String(id), name, thumbnail };
+          })
         : [];
       if (normalized.length === 0) throw new Error("No topics");
       setTopicOptions(normalized);
     } catch (err) {
-      // fallback sample topics
-      setTopicOptions([
-        { id: "fruits", name: "Fruits" },
-        { id: "education", name: "Education" },
-        { id: "appearances", name: "Appearances" },
-        { id: "animals", name: "Animals" },
-      ]);
-      toast({ title: "Could not load topics from API.", description: "Using local list.", status: "info", duration: 4000, isClosable: true });
+      // Do not fall back to a local sample list for admin view — show real data only
+      setTopicOptions([]);
+      toast({ title: "Could not load topics from API.", description: (err && err.message) ? err.message : "Check your network or auth token.", status: "error", duration: 6000, isClosable: true });
     } finally {
       setLoadingTopics(false);
     }
@@ -146,7 +149,11 @@ export default function EditQuiz() {
         { id: 'opt-3', text: '', image: null, isCorrect: false },
       ]);
     } else if (newQuestionType === 'fill') {
-      // nothing else required; fill uses fillAnswerLocal
+      // Initialize fill creation state: admin will type the full keyword, then toggle letters
+      setEditedContent("");
+      setFillPromptLocal("");
+      setFillAnswerLocal("");
+      setFillHiddenLocal([]);
     } else if (newQuestionType === 'match') {
       setPromptsLocal([
         { id: 'p-0', text: '', image: null },
@@ -172,34 +179,190 @@ export default function EditQuiz() {
     onOpen();
   }
 
-  // Dummy topics/questions for demo when state not provided
-  const [topicsState, setTopicsState] = React.useState((quiz && quiz.topics) || ["Fruits", "Education", "Appearances"]);
+  // Helper to normalize various quiz.topic shapes into an array of topic objects or names
+  const normalizeTopicsFromQuiz = (q) => {
+    if (!q) return [];
+    const makeTopicObj = (raw, idx) => {
+      if (!raw) return null;
+      if (typeof raw === 'string') return { id: `t-${idx}`, name: raw, thumbnail: getTopicImage(raw) };
+      // support nested shapes: { topic_id, topic_name } or { id, name } or { topic: { id, name } }
+      const nested = raw.topic || raw;
+      const name = nested.topic_name || nested.name || nested.title || nested.topicName || nested.topic || String(nested).replace(/\[object Object\]/, '') || `Topic ${idx + 1}`;
+      const id = nested.topic_id || nested.id || nested._id || nested.topicId || `t-${idx}`;
+      const thumbnail = nested.thumbnail || nested.image || getTopicImage(name);
+      return { id: String(id), name, thumbnail, difficulty: nested.difficulty };
+    };
+
+    // If explicit topics array present (objects or strings)
+    if (Array.isArray(q.topics) && q.topics.length) {
+      const mapped = q.topics.map((t, i) => makeTopicObj(t, i)).filter(Boolean);
+      if (mapped.length) return mapped;
+    }
+
+    // Some APIs return a single topic as an object in `topic`
+    if (q.topic && (typeof q.topic === 'object' || typeof q.topic === 'string')) {
+      const single = makeTopicObj(q.topic, 0);
+      if (single) return [single];
+    }
+
+    // Support older shape: { topic_name, topic_id }
+    if (q.topic_name || q.topicName || q.topicTitle) {
+      const name = q.topic_name || q.topicName || q.topicTitle || '';
+      const id = q.topic_id || q.topicId || q.id || '';
+      return [{ id: String(id || `t-0`), name, thumbnail: getTopicImage(name) }];
+    }
+
+    // Some admin list items include `topic` as a primitive string field
+    if (typeof q.topic === 'string') return [{ id: `t-0`, name: q.topic, thumbnail: getTopicImage(q.topic) }];
+
+    // Fallback: try to infer from quiz.title/name if it looks like a topic (best-effort)
+    if (q.title && typeof q.title === 'string' && q.title.length < 60 && (!q.questions || q.questions === 0)) {
+      return [{ id: `t-infer`, name: q.title, thumbnail: getTopicImage(q.title) }];
+    }
+
+    return [];
+  };
+
+  const [topicsState, setTopicsState] = React.useState(() => {
+    const normalized = normalizeTopicsFromQuiz(quiz);
+    return (normalized && normalized.length) ? normalized : [];
+  });
   const topics = topicsState;
   const toast = useToast();
-  const [questionsState, setQuestionsState] = React.useState([
-    { id: 1, content: "Which picture describe 'pencil case'?", type: "mcq", options: [
-      { id: '1a', text: 'Pencil case', image: null, isCorrect: true },
-      { id: '1b', text: 'Pencil', image: null, isCorrect: false },
-      { id: '1c', text: 'Eraser', image: null, isCorrect: false },
-      { id: '1d', text: 'Ruler', image: null, isCorrect: false },
-    ] },
-    { id: 2, content: "............................................................", type: "mcq", options: [] },
-    { id: 3, content: "............................................................", type: "fill" },
-    { id: 4, content: "............................................................", type: "fill" },
-    { id: 5, content: "Match the heading to the paragraph.", type: "match" },
-    { id: 6, content: "Match the heading to the paragraph.", type: "match" },
-    { id: 7, content: "............................................................", type: "mcq", options: [] },
-    { id: 8, content: "............................................................", type: "match" },
-  ]);
+  const [topicsResolved, setTopicsResolved] = React.useState(false);
+
+  // Debug: log incoming quiz and current topics to help troubleshoot missing topic cards
+  React.useEffect(() => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[EditQuiz] location.state.quiz:', quiz);
+      // eslint-disable-next-line no-console
+      console.log('[EditQuiz] initial topicsState:', topicsState);
+    } catch (e) {}
+  }, []);
+
+  // Log whenever quiz or topicsState changes (helps verify normalization)
+  React.useEffect(() => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[EditQuiz] quiz changed:', quiz);
+      // eslint-disable-next-line no-console
+      console.log('[EditQuiz] topicsState now:', topicsState);
+    } catch (e) {}
+  }, [quiz, topicsState]);
+
+  // If a quiz is present but topics are empty, show a lightweight toast so user sees the mismatch
+  // Only show after we've attempted fallback+fetch (topicsResolved)
+  React.useEffect(() => {
+    if (quiz && topicsResolved && Array.isArray(topicsState) && topicsState.length === 0) {
+      toast({ title: 'No topics found for this quiz', description: 'Quiz loaded but contains 0 topics.', status: 'warning', duration: 4000, isClosable: true });
+    }
+  }, [quiz, topicsState, topicsResolved]);
+  const [questionsState, setQuestionsState] = React.useState(() => {
+    // If a quiz was passed in via location state and contains questions, map them
+    if (quiz && Array.isArray(quiz.questions) && quiz.questions.length) {
+      return quiz.questions.map((q) => {
+        // helper to map API question_type to local short type
+        const mapType = (raw) => {
+          const s = (raw || '').toString().toLowerCase();
+          if (s.includes('listen')) return 'listening';
+          if (s.includes('img') && s.includes('choose')) return 'mcq';
+          if (s.includes('choose') && s.includes('text')) return 'mcq';
+          if (s.includes('fill')) return 'fill';
+          if (s.includes('match') || s.includes('pair')) return 'match';
+          if (s.includes('mcq') || s.includes('multiple')) return 'mcq';
+          return 'mcq';
+        };
+
+        const id = q.id || q.question_id || q.questionId || '';
+        const type = mapType(q.type || q.question_type || q.questionType || '');
+        const content = q.prompt || q.content || '';
+        const options = (q.options || q.QuestionOptions || []).map((o) => ({
+          id: o.id || o.option_id || '',
+          text: o.text || o.option_text || '',
+          image: o.image || o.option_image_url || null,
+          isCorrect: !!Number(o.is_correct || o.isCorrect || 0),
+        }));
+
+        let prompts = [];
+        let responses = [];
+        const pairs = q.pairs || q.MatchingPairs || [];
+        if (Array.isArray(pairs) && pairs.length) {
+          prompts = pairs.map((p, i) => ({ id: p.pair_id || p.id || `p-${i}`, text: '', image: p.image_url || p.image || null }));
+          responses = pairs.map((p, i) => ({ id: p.pair_id || p.id || `r-${i}`, text: p.word_text || p.text || '', image: null }));
+        }
+
+        const answer = q.correct_text_answer || q.correctText || q.answer || null;
+
+        return {
+          id,
+          content,
+          type,
+          options,
+          prompts,
+          responses,
+          answer,
+          image: q.image || q.image_url || null,
+          audio: q.audio || q.audio_url || null,
+        };
+      });
+    }
+
+    // No fallback/demo questions — show empty list when API doesn't provide questions
+    return [];
+  });
+
+  // If this page was opened with a quiz object that lacks topics, try fetching full quiz details
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        // If quiz exists but has no topics, try fallback from the row that opened the editor
+        if (quiz && Array.isArray(quiz.sourceRowTopics) && quiz.sourceRowTopics.length && (!quiz.topics || (Array.isArray(quiz.topics) && quiz.topics.length === 0))) {
+          const mapped = quiz.sourceRowTopics.map((t, i) => (typeof t === 'string' ? { id: `sr-${i}`, name: t, thumbnail: getTopicImage(t) } : (t && t.name ? { id: String(t.id || `sr-${i}`), name: t.name, thumbnail: t.thumbnail || getTopicImage(t.name) } : null))).filter(Boolean);
+          if (mounted && mapped.length) {
+            setTopicsState(mapped);
+            // continue — do not return; allow fetch below to possibly replace if better data exists
+          }
+        }
+
+        if (quiz && (!quiz.topics || (Array.isArray(quiz.topics) && quiz.topics.length === 0)) && (quiz.id || quiz.quiz_id)) {
+          const id = quiz.id || quiz.quiz_id;
+          const detailed = await apiFetchQuiz(id);
+          if (!mounted) return;
+          if (detailed && Array.isArray(detailed.topics) && detailed.topics.length) {
+            // Normalize topics into simple objects { id, name, thumbnail, difficulty }
+            const mapped = detailed.topics.map((t, i) => {
+              if (typeof t === 'string') return { id: `${id}-t-${i}`, name: t, thumbnail: getTopicImage(t) };
+              const name = t.topic_name || t.name || t.title || String(t);
+              const tid = t.topic_id || t.id || `${id}-t-${i}`;
+              const thumb = t.thumbnail || getTopicImage(name);
+              return { id: String(tid), name, thumbnail: thumb, difficulty: t.difficulty };
+            });
+            setTopicsState(mapped);
+          }
+        }
+      } catch (e) {
+        // ignore — topics will remain as provided
+      }
+      // mark that we've attempted to resolve topics (fallback + fetch attempt finished)
+      if (mounted) setTopicsResolved(true);
+    })();
+    return () => { mounted = false; };
+  }, [quiz]);
   // Local editing state for MCQ modal
   const [optionsLocal, setOptionsLocal] = React.useState([]);
   const [editedContent, setEditedContent] = React.useState("");
   const [fillAnswerLocal, setFillAnswerLocal] = React.useState("");
   const [fillHiddenLocal, setFillHiddenLocal] = React.useState([]);
+  const [fillPromptLocal, setFillPromptLocal] = React.useState("");
   const fileInputRef = React.useRef(null);
   const [imagePickIndex, setImagePickIndex] = React.useState(null);
   const questionFileRef = React.useRef(null);
   const [editedQuestionImage, setEditedQuestionImage] = React.useState(null);
+  const audioFileRef = React.useRef(null);
+  const [editedQuestionAudio, setEditedQuestionAudio] = React.useState(null);
+  const audioRef = React.useRef(null);
   // Matching question local state
   const [promptsLocal, setPromptsLocal] = React.useState([]);
   const [responsesLocal, setResponsesLocal] = React.useState([]);
@@ -266,7 +429,9 @@ export default function EditQuiz() {
   function handleEditQuestion(q) {
     setSelectedQuestion(q);
     // Initialize local editable fields
-    setEditedContent(q.content || "");
+    // For listening questions, prefer the correct keyword/answer if available
+    const listeningKeyword = q.answer || q.correct_text_answer || q.correctText || q.answerText || null;
+    setEditedContent(q.type === 'listening' ? (listeningKeyword || q.content || "") : (q.content || ""));
     setEditedQuestionImage(q.image || null);
     if (q.type === 'mcq') {
       const opts = Array.isArray(q.options) && q.options.length > 0
@@ -320,20 +485,38 @@ export default function EditQuiz() {
       setResponsesLocal([]);
     }
     if (q.type === 'fill') {
-      const ans = q.answer || "";
-      setFillAnswerLocal(ans);
-      // Support different possible shapes for hidden data on the question object
-      if (Array.isArray(q.hiddenPositions)) {
-        // boolean array
-        const h = q.hiddenPositions.slice(0, ans.length);
-        setFillHiddenLocal(h.concat(Array.from({ length: Math.max(0, ans.length - h.length) }, () => false)));
-      } else if (Array.isArray(q.hiddenIndices)) {
-        // indices array -> convert to booleans
-        setFillHiddenLocal(Array.from({ length: ans.length }, (_, i) => q.hiddenIndices.includes(i)));
-      } else if (Array.isArray(q.hidden)) {
-        setFillHiddenLocal(q.hidden.map(Boolean).slice(0, ans.length).concat(Array.from({ length: Math.max(0, ans.length - q.hidden.length) }, () => false)));
+      const ans = q.correct_text_answer || q.correctText || q.answer || "";
+      // original prompt may contain underscores (stored shape) or full word
+      const promptRaw = (q.prompt || q.content || "") + "";
+      // If stored prompt contains underscores, reconstruct a full-word prompt by inserting answer into first underscore group
+      const m = promptRaw.match(/_+/);
+      if (m) {
+        const groupStart = m.index || 0;
+        const groupLen = m[0].length;
+        const ansLetters = String(ans || "");
+        const padded = (ansLetters + Array(groupLen).fill(' ').join('')).slice(0, groupLen);
+        const full = promptRaw.slice(0, groupStart) + padded + promptRaw.slice(groupStart + groupLen);
+        setFillPromptLocal(full);
+        setEditedContent(full);
+        // init hidden mask from underscores positions in stored prompt
+        const initHidden = Array.from(promptRaw).map((ch) => ch === '_');
+        // prefer backend masks if provided
+        if (Array.isArray(q.hiddenPositions) && q.hiddenPositions.length >= initHidden.length) {
+          setFillHiddenLocal(q.hiddenPositions.slice(0, initHidden.length).map(Boolean));
+        } else if (Array.isArray(q.hiddenIndices) && q.hiddenIndices.length > 0) {
+          setFillHiddenLocal(Array.from({ length: initHidden.length }, (_, i) => q.hiddenIndices.includes(i)));
+        } else if (Array.isArray(q.hidden) && q.hidden.length >= initHidden.length) {
+          setFillHiddenLocal(q.hidden.map(Boolean).slice(0, initHidden.length));
+        } else {
+          setFillHiddenLocal(initHidden);
+        }
+        setFillAnswerLocal(ans);
       } else {
-        setFillHiddenLocal(Array.from({ length: ans.length }, () => false));
+        // prompt already full-word
+        setFillPromptLocal(promptRaw);
+        setEditedContent(promptRaw.replace(/_+/, ans));
+        setFillHiddenLocal(Array.from(promptRaw).map(() => false));
+        setFillAnswerLocal(ans || "");
       }
     } else {
       setFillAnswerLocal("");
@@ -393,6 +576,10 @@ export default function EditQuiz() {
     if (questionFileRef.current) questionFileRef.current.click();
   }
 
+  function handleQuestionAudioClick() {
+    if (audioFileRef.current) audioFileRef.current.click();
+  }
+
   function handleQuestionFileChange(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -404,8 +591,24 @@ export default function EditQuiz() {
     reader.readAsDataURL(file);
   }
 
+  function handleQuestionAudioChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    // Use object URL for audio playback
+    const url = URL.createObjectURL(file);
+    setEditedQuestionAudio(url);
+    e.target.value = '';
+  }
+
   function handleRemoveQuestionImage() {
     setEditedQuestionImage(null);
+  }
+
+  function handleRemoveQuestionAudio() {
+    if (editedQuestionAudio && typeof editedQuestionAudio === 'string' && editedQuestionAudio.startsWith('blob:')) {
+      try { URL.revokeObjectURL(editedQuestionAudio); } catch (e) {}
+    }
+    setEditedQuestionAudio(null);
   }
 
   function handleDeleteOption(index) {
@@ -430,8 +633,15 @@ export default function EditQuiz() {
     }
     // include fill answer and hidden positions when applicable
     if (selectedQuestion.type === 'fill') {
+      // Save the prompt (with blanks) as the stored content/prompt so backend keeps blanks
+      updated.content = fillPromptLocal || editedContent;
+      updated.prompt = fillPromptLocal || editedContent;
+      // Store the correct answer under common backend fields
+      updated.correct_text_answer = fillAnswerLocal || "";
+      updated.correctText = fillAnswerLocal || "";
       updated.answer = fillAnswerLocal || "";
-      updated.hiddenPositions = Array.isArray(fillHiddenLocal) ? fillHiddenLocal : Array.from({ length: (fillAnswerLocal || "").length }, () => false);
+      // store hidden mask if available
+      updated.hiddenPositions = Array.isArray(fillHiddenLocal) ? fillHiddenLocal.map(Boolean) : Array.from({ length: (fillPromptLocal || editedContent || "").length }, () => false);
     }
     setQuestionsState((prev) => {
       const exists = prev.some((q) => q.id === selectedQuestion.id);
@@ -513,37 +723,44 @@ export default function EditQuiz() {
         <Text fontSize={{ base: "20px", md: "22px" }} fontWeight="800" mb="12px" color="white">Topic included</Text>
 
         <SimpleGrid columns={{ base: 1, md: 3 }} gap={{ base: 6, md: 10 }} mb="24px">
-          {topics.map((t, i) => (
-            <Box
-              key={t + i}
-              bg="white"
-              boxShadow="0 6px 12px rgba(0,0,0,0.18)"
-              borderRadius="16px"
-              p={{ base: 4, md: 6 }}
-              position="relative"
-            >
-              <Badge
-                position="absolute"
-                top="10px"
-                left="12px"
-                colorScheme={i % 3 === 0 ? "green" : i % 3 === 1 ? "orange" : "red"}
-                variant="subtle"
-                fontSize="10px"
-                px="2"
+          {topics.map((t, i) => {
+            // Support either a string topic name or an object { id, name, thumbnail }
+            const topicName = typeof t === 'string' ? t : (t.name || t.topic_name || t.topic || `Topic ${i + 1}`);
+            const topicThumb = (typeof t === 'object' && t.thumbnail) ? t.thumbnail : getTopicImage(topicName);
+            const key = (typeof t === 'object' && (t.id || t.topic_id)) ? (t.id || t.topic_id) : `${topicName}-${i}`;
+            return (
+              <Box
+                key={key}
+                bg="white"
+                boxShadow="0 6px 12px rgba(0,0,0,0.18)"
+                borderRadius="16px"
+                p={{ base: 4, md: 6 }}
+                position="relative"
               >
-                {i % 3 === 0 ? "Easy" : i % 3 === 1 ? "Medium" : "Hard"}
-              </Badge>
+                <Badge
+                  position="absolute"
+                  top="10px"
+                  left="12px"
+                  colorScheme={i % 3 === 0 ? "green" : i % 3 === 1 ? "orange" : "red"}
+                  variant="subtle"
+                  fontSize="10px"
+                  px="2"
+                >
+                  {i % 3 === 0 ? "Easy" : i % 3 === 1 ? "Medium" : "Hard"}
+                </Badge>
 
-              <Flex align="center" gap="12px">
-                <Image src={getTopicImage(t)} boxSize={{ base: "56px", md: "64px" }} borderRadius="8px" objectFit="cover" />
-                <Box ml={{ base: 0, md: 2 }}>
-                  <Text fontWeight={700} mt="6px">{t}</Text>
-                  <Text color="blue.500" mt="6px">{(i + 1) * 10} words</Text>
-                </Box>
-              </Flex>
-            </Box>
-          ))}
+                <Flex align="center" gap="12px">
+                  <Image src={topicThumb} boxSize={{ base: "56px", md: "64px" }} borderRadius="8px" objectFit="cover" />
+                  <Box ml={{ base: 0, md: 2 }}>
+                    <Text fontWeight={700} mt="6px">{topicName}</Text>
+                    <Text color="blue.500" mt="6px">{(i + 1) * 10} words</Text>
+                  </Box>
+                </Flex>
+              </Box>
+            );
+          })}
 
+        </SimpleGrid>
           <Flex align="center" justify="center">
             <Button
               borderRadius="full"
@@ -556,7 +773,7 @@ export default function EditQuiz() {
               +
             </Button>
           </Flex>
-        </SimpleGrid>
+        
       </Box>
 
       {/* Questions header (styled like Topic included) */}
@@ -751,33 +968,63 @@ export default function EditQuiz() {
                       position="relative"
                     >
                           <Flex position="absolute" top="12px" right="14px" gap={2} zIndex={2}>
-                        {editedQuestionImage ? (
-                          <IconButton aria-label="Remove question image" icon={<MdDelete size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleRemoveQuestionImage} />
-                        ) : null}
-                        <IconButton aria-label="Add question image" icon={<MdImage size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleQuestionImageClick} />
-                      </Flex>
+                            {selectedQuestion && selectedQuestion.type === 'listening' ? (
+                              <>
+                                {editedQuestionAudio ? (
+                                  <IconButton aria-label="Remove question audio" icon={<MdDelete size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleRemoveQuestionAudio} />
+                                ) : null}
+                                <IconButton aria-label="Add question audio" icon={<MdAudiotrack size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleQuestionAudioClick} />
+                              </>
+                            ) : (
+                              <>
+                                {editedQuestionImage ? (
+                                  <IconButton aria-label="Remove question image" icon={<MdDelete size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleRemoveQuestionImage} />
+                                ) : null}
+                                <IconButton aria-label="Add question image" icon={<MdImage size={20} />} size="md" variant="ghost" color="purple.700" onClick={handleQuestionImageClick} />
+                              </>
+                            )}
+                          </Flex>
 
                       <Center h="100%">
                         {selectedQuestion && selectedQuestion.type === 'listening' ? (
                           <Box textAlign="center">
-                            <Text fontSize={{ base: '14px', md: '16px' }} color="purple.700" fontWeight={600} mb={2}>Keyword</Text>
-                            <Textarea
-                              value={editedContent}
-                              onChange={(e) => setEditedContent(e.target.value)}
-                              placeholder="Enter the keyword to test (e.g. 'apple')"
-                              resize="none"
-                              minH="100px"
-                              bg="transparent"
-                              border="none"
-                              color="purple.700"
-                              textAlign="center"
-                              fontSize={{ base: '20px', md: '28px' }}
-                            />
+                            <Text fontSize={{ base: '14px', md: '16px' }} color="purple.700" fontWeight={600} mb={2}>Choose the correct answer</Text>
+                              <Flex justify="center" mt={3}>
+                                <IconButton
+                                  aria-label="Play question audio"
+                                  icon={<MdPlayArrow />}
+                                  colorScheme="purple"
+                                  variant="ghost"
+                                  size="xl"
+                                  fontSize="40px"
+                                  isDisabled={!((editedQuestionAudio) || (selectedQuestion && (selectedQuestion.audio || selectedQuestion.audio_url)))}
+                                  onClick={() => {
+                                    const src = editedQuestionAudio || (selectedQuestion && (selectedQuestion.audio || selectedQuestion.audio_url));
+                                    if (!src) return;
+                                    if (audioRef.current) {
+                                      audioRef.current.src = src;
+                                      audioRef.current.play().catch(() => {});
+                                    } else {
+                                      const a = new Audio(src);
+                                      a.play().catch(() => {});
+                                    }
+                                  }}
+                                />
+                              </Flex>
                           </Box>
                         ) : (
                           <Textarea
                             value={editedContent}
-                            onChange={(e) => setEditedContent(e.target.value)}
+                            onChange={(e) => {
+                              const v = e.target.value || "";
+                              setEditedContent(v);
+                              // If creating/editing a fill question, treat the main textarea as the keyword input
+                              if (selectedQuestion && selectedQuestion.type === 'fill') {
+                                setFillPromptLocal(v);
+                                setFillHiddenLocal(Array.from(v).map(() => false));
+                                setFillAnswerLocal("");
+                              }
+                            }}
                             placeholder="Type your question here..."
                             resize="none"
                             minH="100px"
@@ -793,40 +1040,44 @@ export default function EditQuiz() {
                       {editedQuestionImage ? (
                         <Image src={editedQuestionImage} mt={2} borderRadius="8px" maxH="140px" objectFit="cover" />
                       ) : null}
+                      {editedQuestionAudio ? (
+                        <Box mt={2}>
+                          <Text fontSize="sm" color="purple.700" mb={1}>Attached audio</Text>
+                        </Box>
+                      ) : null}
                       {selectedQuestion && selectedQuestion.type === 'fill' ? (
                         <Box bg="white" p={4} borderRadius="12px" mt={4}>
                           <Text fontWeight={600} mb={2} color="purple.700">Correct answer</Text>
                           <Input
                             value={fillAnswerLocal}
-                            onChange={(e) => {
-                              const val = e.target.value || "";
-                              setFillAnswerLocal(val);
-                              setFillHiddenLocal((prev) => {
-                                const prevLen = prev.length;
-                                const newLen = val.length;
-                                if (newLen === prevLen) return prev;
-                                if (newLen > prevLen) return [...prev, ...Array.from({ length: newLen - prevLen }, () => false)];
-                                return prev.slice(0, newLen);
-                              });
-                            }}
-                            placeholder="Enter the correct answer"
+                            readOnly
+                            placeholder="(flip letters to build answer)"
                             mb={3}
                           />
                           <Text fontSize="sm" color="gray.600" mb={2}>Student's view</Text>
                           <Flex gap={2} flexWrap="wrap">
-                            {(fillAnswerLocal || "").split("").map((ch, i) => {
+                            {((fillPromptLocal || "") || "").split("").map((_, i) => {
+                              const prompt = (fillPromptLocal || "") || "";
+                              const ch = prompt[i] || '\u00A0';
                               const hidden = !!fillHiddenLocal[i];
+                              const displayChar = hidden ? '_' : ch;
                               return (
                                 <Box
                                   as="button"
                                   key={i}
-                                  onClick={() => setFillHiddenLocal((prev) => {
-                                    const copy = [...prev];
-                                    const len = Math.max(copy.length, (fillAnswerLocal || "").length);
-                                    if (copy.length < len) copy.push(...Array.from({ length: len - copy.length }, () => false));
-                                    copy[i] = !copy[i];
-                                    return copy;
-                                  })}
+                                  onClick={() => {
+                                    const p = (fillPromptLocal || "") || "";
+                                    setFillHiddenLocal((prev) => {
+                                      const copy = [...prev];
+                                      const len = Math.max(copy.length, p.length);
+                                      if (copy.length < len) copy.push(...Array.from({ length: len - copy.length }, () => false));
+                                      copy[i] = !copy[i];
+                                      // Recompute answer from new mask (left-to-right)
+                                      const ans = p.split("").map((c, idx) => (copy[idx] ? c : null)).filter(Boolean).join("");
+                                      setFillAnswerLocal(ans);
+                                      return copy;
+                                    });
+                                  }}
                                   bg={hidden ? "gray.200" : "purple.50"}
                                   borderRadius="6px"
                                   px={3}
@@ -836,7 +1087,7 @@ export default function EditQuiz() {
                                   fontWeight={700}
                                   _focus={{ outline: "none" }}
                                 >
-                                  {hidden ? '_' : (ch === ' ' ? '\u00A0' : ch)}
+                                  {displayChar === ' ' ? '\u00A0' : displayChar}
                                 </Box>
                               );
                             })}
@@ -844,6 +1095,8 @@ export default function EditQuiz() {
                         </Box>
                       ) : null}
                       <input type="file" accept="image/*" ref={questionFileRef} style={{ display: 'none' }} onChange={handleQuestionFileChange} />
+                      <input type="file" accept="audio/*" ref={audioFileRef} style={{ display: 'none' }} onChange={handleQuestionAudioChange} />
+                      <audio ref={audioRef} style={{ display: 'none' }} />
                     </Box>
 
                     <SimpleGrid columns={{ base: 1, md: 4 }} gap={6}>
@@ -1000,26 +1253,33 @@ export default function EditQuiz() {
                       <Input placeholder="Search topics..." value={topicSearch} onChange={(e) => setTopicSearch(e.target.value)} />
                     </InputGroup>
 
-                    <SimpleGrid columns={[1, 2, 3]} spacing={4}>
-                      {filteredTopicOptions.map((t) => (
-                        <Box
-                          key={t.id}
-                          borderRadius="md"
-                          overflow="hidden"
-                          bg={cardBg}
-                          boxShadow={selectedTopicName === (t.name || t.id) ? '0 8px 20px rgba(99,102,241,0.18)' : '0 6px 12px rgba(0,0,0,0.06)'}
-                          borderWidth={selectedTopicName === (t.name || t.id) ? '2px' : '1px'}
-                          borderColor={selectedTopicName === (t.name || t.id) ? 'purple.400' : 'transparent'}
-                          p={3}
-                          cursor="pointer"
-                          onClick={() => setSelectedTopicName(t.name || t.id)}
-                        >
-                          <Image src={t.thumbnail || getTopicImage(t.name)} alt={t.name} mb={2} borderRadius="sm" />
-                          <Text fontWeight="bold">{t.name}</Text>
-                          {t.description ? <Text fontSize="sm" color="gray.500">{t.description}</Text> : null}
-                        </Box>
-                      ))}
-                    </SimpleGrid>
+                    {filteredTopicOptions.length === 0 ? (
+                      <Box textAlign="center" py={12}>
+                        <Text mb={3} color="gray.600">No topics available from the API.</Text>
+                        <Button onClick={handleOpenTopics} colorScheme="purple">Retry</Button>
+                      </Box>
+                    ) : (
+                      <SimpleGrid columns={[1, 2, 3]} spacing={4}>
+                        {filteredTopicOptions.map((t) => (
+                          <Box
+                            key={t.id}
+                            borderRadius="md"
+                            overflow="hidden"
+                            bg={cardBg}
+                            boxShadow={selectedTopicName === (t.name || t.id) ? '0 8px 20px rgba(99,102,241,0.18)' : '0 6px 12px rgba(0,0,0,0.06)'}
+                            borderWidth={selectedTopicName === (t.name || t.id) ? '2px' : '1px'}
+                            borderColor={selectedTopicName === (t.name || t.id) ? 'purple.400' : 'transparent'}
+                            p={3}
+                            cursor="pointer"
+                            onClick={() => setSelectedTopicName(t.name || t.id)}
+                          >
+                            <Image src={t.thumbnail || getTopicImage(t.name)} alt={t.name} mb={2} borderRadius="sm" />
+                            <Text fontWeight="bold">{t.name}</Text>
+                            {t.description ? <Text fontSize="sm" color="gray.500">{t.description}</Text> : null}
+                          </Box>
+                        ))}
+                      </SimpleGrid>
+                    )}
                   </>
                 )}
               </ModalBody>
