@@ -43,6 +43,8 @@ import { MdSearch } from 'react-icons/md';
 import Card from "components/card/Card";
 import Menu from "components/menu/MainMenu";
 import { fetchTopics as apiFetchTopics, fetchQuiz as apiFetchQuiz } from "../../../api/quizzes";
+import { createQuestion as apiCreateQuestion } from "../../../api/questions";
+import { deleteQuestion as apiDeleteQuestion } from "../../../api/questions";
 import { Radio, RadioGroup, Stack, Spinner, useToast } from "@chakra-ui/react";
 import { MdArrowBack, MdEdit, MdDelete, MdImage, MdCheckCircle, MdAudiotrack, MdPlayArrow } from "react-icons/md";
 
@@ -57,6 +59,7 @@ import fruitsImg from "assets/img/topic/fruits.png";
 import foodImg from "assets/img/topic/food & drink.png";
 import emotionImg from "assets/img/topic/feelings & characteristic.png";
 import educationImg from "assets/img/topic/school.png";
+import jobsImg from "assets/img/topic/jobs & workplaces.png";
 
 export default function EditQuiz() {
   const { state } = useLocation();
@@ -64,9 +67,46 @@ export default function EditQuiz() {
   const quiz = state && state.quiz ? state.quiz : null;
 
   const textColor = useColorModeValue("secondaryGray.900", "white");
+  // Image to show next to the quiz name: prefer explicit thumbnail/image, otherwise infer from name
+  const quizImage = (quiz && (quiz.thumbnail || quiz.image || quiz.image_url)) || (quiz && quiz.name ? getTopicImage(quiz.name) : null);
+  // Compute a displayable quiz id (support multiple backend field names)
+  const quizId = quiz && (quiz.id || quiz.quiz_id || quiz._id || quiz.quizId || quiz.id || quiz._id);
   const rowOddBg = useColorModeValue("rgba(99,102,241,0.06)", "rgba(99,102,241,0.06)");
   const pageBg = useColorModeValue("purple.200", "purple.800");
   const cardBg = useColorModeValue("white", "gray.800");
+  // Configuration: how many question IDs per quiz block by default.
+  // For example, blockSize=20 means quiz 1 has IDs 1..20, quiz 2 has 21..40, etc.
+  const QUESTION_BLOCK_SIZE = 20;
+
+  /**
+   * Compute the next numeric question id for a quiz, constrained within that quiz's numeric range.
+   * Accepts either a numeric quizId or string; existingIds is an array of strings/numbers from current questions.
+   * Optional `overrides` can map quizId -> [min, max] to support irregular ranges.
+   */
+  function computeNextQuestionId(quizIdRaw, existingIds = [], blockSize = QUESTION_BLOCK_SIZE, overrides = {}) {
+    if (!quizIdRaw) throw new Error('quiz id required to compute question id');
+    const qn = Number(quizIdRaw);
+    if (!Number.isFinite(qn) || qn <= 0) throw new Error('quiz id must be a positive number');
+
+    // If an explicit override range provided for this quiz id, use it
+    if (overrides && overrides[String(qn)]) {
+      const [min, max] = overrides[String(qn)];
+      const taken = existingIds.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n >= min && n <= max);
+      const maxTaken = taken.length ? Math.max(...taken) : (min - 1);
+      const candidate = maxTaken + 1;
+      if (candidate > max) throw new Error(`No available question ids in range ${min}-${max} for quiz ${qn}`);
+      return String(candidate);
+    }
+
+    // Default contiguous block calculation: quiz 1 -> 1..blockSize, quiz 2 -> (blockSize+1)..(2*blockSize), etc.
+    const min = (qn - 1) * blockSize + 1;
+    const max = qn * blockSize;
+    const taken = existingIds.map((id) => Number(id)).filter((n) => Number.isFinite(n) && n >= min && n <= max);
+    const maxTaken = taken.length ? Math.max(...taken) : (min - 1);
+    const candidate = maxTaken + 1;
+    if (candidate > max) throw new Error(`No available question ids in range ${min}-${max} for quiz ${qn}`);
+    return String(candidate);
+  }
   const { isOpen, onOpen, onClose } = useDisclosure();
   // Delete confirmation dialog state
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
@@ -533,22 +573,39 @@ export default function EditQuiz() {
 
   function handleConfirmDelete() {
     if (!questionToDelete) return;
-    try {
-      const id = questionToDelete.id;
-      setQuestionsState((prev) => prev.filter((qq) => qq.id !== id));
-      if (selectedQuestion && selectedQuestion.id === id) {
-        setSelectedQuestion(null);
-        setOptionsLocal([]);
-        setEditedContent("");
-        onClose();
-      }
-      setQuestionToDelete(null);
-      onDeleteClose();
-      toast({ title: 'Question deleted', status: 'success', duration: 2500, isClosable: true });
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Could not delete question', status: 'error', duration: 3000, isClosable: true });
+    const id = questionToDelete.id;
+    const wasNew = String(id || '').startsWith('new-');
+    const prevQuestions = (questionsState || []).slice();
+
+    // Optimistically remove locally
+    setQuestionsState((prev) => prev.filter((qq) => qq.id !== id));
+    if (selectedQuestion && selectedQuestion.id === id) {
+      setSelectedQuestion(null);
+      setOptionsLocal([]);
+      setEditedContent("");
+      onClose();
     }
+    setQuestionToDelete(null);
+    onDeleteClose();
+
+    // If the question existed only in the UI (new-...), no server call required
+    if (wasNew) {
+      toast({ title: 'Question removed', status: 'success', duration: 2500, isClosable: true });
+      return;
+    }
+
+    // Otherwise, attempt to delete on server; rollback on failure
+    (async () => {
+      try {
+        await apiDeleteQuestion(id);
+        toast({ title: 'Question deleted', status: 'success', duration: 2500, isClosable: true });
+      } catch (err) {
+        console.error('Failed to delete question on server', err);
+        // rollback local deletion
+        setQuestionsState(prevQuestions);
+        toast({ title: 'Could not delete question on server', description: err && err.message ? err.message : String(err), status: 'error', duration: 5000, isClosable: true });
+      }
+    })();
   }
 
   function handleImageClick(index) {
@@ -623,8 +680,10 @@ export default function EditQuiz() {
     setOptionsLocal((prev) => prev.map((o, i) => ({ ...o, isCorrect: i === index })));
   }
 
-  function handleSaveQuestion() {
+  async function handleSaveQuestion() {
     if (!selectedQuestion) return;
+    const wasNew = String(selectedQuestion.id || '').startsWith('new-');
+    const selType = selectedQuestion.type;
     const updated = { ...selectedQuestion, content: editedContent, options: optionsLocal, image: editedQuestionImage };
     // include matching headings data when applicable
     if (selectedQuestion.type === 'match') {
@@ -643,12 +702,43 @@ export default function EditQuiz() {
       // store hidden mask if available
       updated.hiddenPositions = Array.isArray(fillHiddenLocal) ? fillHiddenLocal.map(Boolean) : Array.from({ length: (fillPromptLocal || editedContent || "").length }, () => false);
     }
-    setQuestionsState((prev) => {
-      const exists = prev.some((q) => q.id === selectedQuestion.id);
-      if (exists) return prev.map((q) => (q.id === selectedQuestion.id ? updated : q));
-      // append new questions to the end so numbering continues
-      return [...prev, updated];
-    });
+    // Determine local insertion/replacement and compute next question_id for API
+    let nextQuestionId = null;
+    // compute quiz id for later use
+    const qid = quizId || (quiz && (quiz.id || quiz.quiz_id || quiz._id || quiz.quizId));
+    if (!qid) {
+      // If no quiz id, just update local state as before (cannot persist to server)
+      setQuestionsState((prev) => {
+        const exists = prev.some((q) => q.id === selectedQuestion.id);
+        if (exists) return prev.map((q) => (q.id === selectedQuestion.id ? updated : q));
+        return [...prev, updated];
+      });
+    } else {
+      // Build list of existing numeric ids for this quiz from local state
+      const existingIds = (questionsState || []).map((q) => {
+        // q.id may be numeric string, number, or 'new-...'
+        const n = Number(q.id);
+        return Number.isFinite(n) ? n : null;
+      }).filter(Boolean);
+
+      if (String(selectedQuestion.id || '').startsWith('new-')) {
+        try {
+          nextQuestionId = computeNextQuestionId(qid, existingIds);
+          // assign the computed id locally so UI reflects final numbering
+          updated.id = nextQuestionId;
+        } catch (err) {
+          // fallback: append using length+1 (best-effort)
+          nextQuestionId = String((existingIds.length || 0) + 1);
+          updated.id = nextQuestionId;
+        }
+      }
+
+      setQuestionsState((prev) => {
+        const exists = prev.some((q) => q.id === selectedQuestion.id || q.id === updated.id);
+        if (exists) return prev.map((q) => (q.id === selectedQuestion.id || q.id === updated.id ? updated : q));
+        return [...prev, updated];
+      });
+    }
     setSelectedQuestion(null);
     setOptionsLocal([]);
     setEditedContent("");
@@ -656,15 +746,41 @@ export default function EditQuiz() {
     setFillHiddenLocal([]);
     onClose();
     toast({ title: 'Question saved', status: 'success', duration: 2500, isClosable: true });
+
+    // If we have a quiz id available and this is a newly-created question, try to persist to API
+    try {
+      const qid = quizId || (quiz && (quiz.id || quiz.quiz_id || quiz._id || quiz.quizId));
+      if (qid && wasNew) {
+        // Build API payload according to admin POST example
+        const payload = {
+          question_id: nextQuestionId || String((questionsState && questionsState.length) ? questionsState.length + 1 : 1),
+          quiz_id: String(qid),
+          question_type: (selType === 'fill') ? 'FILL_BLANK' : (selType || '').toUpperCase(),
+          prompt: updated.prompt || updated.content || '',
+          image_url: updated.image || null,
+          audio_url: updated.audio || null,
+          correct_text_answer: updated.correct_text_answer || updated.correctText || updated.answer || null,
+          QuestionOptions: Array.isArray(updated.options) ? updated.options.map((o) => ({ option_id: o.id || '', option_text: o.text || '', option_image_url: o.image || null, is_correct: o.isCorrect ? 1 : 0 })) : [],
+          MatchingPairs: Array.isArray(updated.prompts) && Array.isArray(updated.responses) ? updated.prompts.map((p, i) => ({ pair_id: p.id || `p-${i}`, image: p.image || null, word_text: updated.responses[i] ? (updated.responses[i].text || '') : '' })) : [],
+        };
+
+        await apiCreateQuestion(payload);
+        toast({ title: 'Question persisted to server', status: 'success', duration: 3000, isClosable: true });
+      }
+    } catch (err) {
+      console.error('Failed to persist question to API', err);
+      toast({ title: 'Could not save question to server', description: err && err.message ? err.message : String(err), status: 'warning', duration: 5000, isClosable: true });
+    }
   }
 
   function getTopicImage(name) {
     if (!name) return animalsImg;
     const key = name.toLowerCase();
     if (key.includes("fruit") || key.includes("fruits")) return fruitsImg;
-    if (key.includes("education") || key.includes("information") || key.includes("technology")) return educationImg;
+    if (key.includes("school") || key.includes("education") || key.includes("information") || key.includes("technology")) return educationImg;
+    if (key.includes("feel") || key.includes("feeling") || key.includes("character") || key.includes("characteristic") || key.includes("personality") || key.includes("personalit") || key.includes("person")) return emotionImg;
+    if (key.includes("job") || key.includes("work") || key.includes("workplace") || key.includes("career") || key.includes("occup")) return jobsImg;
     if (key.includes("appear") || key.includes("face") || key.includes("appearance")) return animalsImg;
-    if (key.includes("personality") || key.includes("personalit") || key.includes("person")) return emotionImg;
     if (key.includes("food")) return foodImg;
     if (key.includes("color") || key.includes("colour")) return colorsImg;
     if (key.includes("animal") || key.includes("animals")) return animalsImg;
@@ -690,34 +806,41 @@ export default function EditQuiz() {
       {/* Topic included section (separated from the main card) */}
       <Box px="25px" pb="20px" mb={{ base: 6, md: 8 }}>
         <Flex align="center" justifyContent="space-between" mb="8px" pb={4} borderBottom="1px solid" borderColor="whiteAlpha.300">
-          <Flex align="center" gap="12px">
-            <Box
-              bg="white"
-              px={{ base: 2, md: 3 }}
-              py={{ base: 1, md: 2 }}
-              borderRadius="999px"
-              display="inline-flex"
-              alignItems="center"
-              boxShadow="sm"
-              border="1px solid"
-              borderColor="gray.200"
-            >
-              <Button
-                variant="ghost"
-                onClick={() => navigate(-1)}
-                leftIcon={<MdArrowBack />}
-                color="gray.800"
-                _hover={{ bg: "gray.100" }}
-                size="sm"
+            <Flex align="center" gap="12px">
+              <Box
+                bg="white"
+                px={{ base: 2, md: 3 }}
+                py={{ base: 1, md: 2 }}
+                borderRadius="999px"
+                display="inline-flex"
+                alignItems="center"
+                boxShadow="sm"
+                border="1px solid"
+                borderColor="gray.200"
               >
-                Back
-              </Button>
-            </Box>
+                <Button
+                  variant="ghost"
+                  onClick={() => navigate(-1)}
+                  leftIcon={<MdArrowBack />}
+                  color="gray.800"
+                  _hover={{ bg: "gray.100" }}
+                  size="sm"
+                >
+                  Back
+                </Button>
+              </Box>
 
-            <Text color="gray.800" fontSize={{ base: "18px", md: "20px" }} fontWeight="800" lineHeight="100%">
-              {quiz ? `Quiz #${quiz.name}` : "Quiz"}
-            </Text>
-          </Flex>
+              <Flex align="center" gap="12px">
+                {quizImage ? (
+                  <Image src={quizImage} boxSize={{ base: "40px", md: "48px" }} borderRadius="8px" objectFit="cover" />
+                ) : null}
+                <Text color="gray.800" fontSize={{ base: "18px", md: "20px" }} fontWeight="800" lineHeight="100%">
+                  {quiz
+                    ? `Quiz ${quizId ? `#${quizId}` : ''}${quiz && (quiz.name || quiz.title) ? ` - ${quiz.name || quiz.title}` : ''}`
+                    : "Quiz"}
+                </Text>
+              </Flex>
+            </Flex>
         </Flex>
 
         <Text fontSize={{ base: "20px", md: "22px" }} fontWeight="800" mb="12px" color="white">Topic included</Text>
